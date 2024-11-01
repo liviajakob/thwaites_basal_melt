@@ -1,0 +1,23 @@
+# When pushing to a branch, test
+# When adapting this template for your own use, please rename "polar_iceshelves" to your package name.
+name: polar_iceshelves_test
+
+on:
+  push:
+    branches-ignore:
+      - main  # all branches except main (and implicitly not tags)
+
+jobs:
+  build_container_if_needed:
+    uses: ./.github/workflows/generic_build_container_if_needed.yml
+    with:
+      package_name: polar_iceshelves
+    secrets: inherit
+
+  test:
+    needs: build_container_if_needed  
+    uses: ./.github/workflows/generic_test.yml
+    with:
+      package_name: polar_iceshelves
+      notebooks_allowed: true
+    secrets: inherit

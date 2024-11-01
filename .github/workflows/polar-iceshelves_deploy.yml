@@ -1,0 +1,22 @@
+# When a version tag is pushed, deploy using that tag.
+# When adapting this template for your own use, please rename "polar_iceshelves" to your package name.
+name: polar_iceshelves_deploy
+
+on:
+  push:
+    branches:
+      - main  # only on main (and implicitly not tags)
+
+jobs:
+  build_container_if_needed:
+    uses: ./.github/workflows/generic_build_container_if_needed.yml
+    with:
+      package_name: polar_iceshelves
+    secrets: inherit
+
+  deploy:
+    needs: build_container_if_needed
+    uses: ./.github/workflows/generic_deploy.yml
+    with:
+      package_name: polar_iceshelves
+    secrets: inherit

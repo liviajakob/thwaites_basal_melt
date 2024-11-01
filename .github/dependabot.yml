@@ -1,0 +1,26 @@
+# Direct Dependabot to maintain dependencies for Earthwave packages.
+version: 2
+registries:
+  earthwave-google-python-artifact-registry:
+    type: python-index
+    url: https://europe-west1-python.pkg.dev/earthwave-sys-0/ewpr/simple
+    username: _json_key
+    password: ${{secrets.GCP_CREDENTIALS}}
+updates:
+  # Enable package updates for pip
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "daily"
+      time: "02:00"
+      timezone: "Europe/London"
+    reviewers:
+      - "earthwave/engineering"
+    registries:
+      - earthwave-google-python-artifact-registry
+    # needed for google python repo
+    insecure-external-code-execution: allow
+    # we prevent gdal from auto-updating becasue
+    # we know we don't have rigorous enough testing to spot interface changes.
+    ignore:
+      - dependency-name: "gdal"    

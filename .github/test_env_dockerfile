@@ -1,0 +1,22 @@
+# start from the basic standard test image
+FROM europe-west1-docker.pkg.dev/earthwave-sys-0/ewdr/ew_continuous_integration_main:basic-standard
+
+# comment the above and uncomment the below if working to the operational standard
+# # start from the operational standard test image
+# FROM europe-west1-docker.pkg.dev/earthwave-sys-0/ewdr/ew_continuous_integration_main:operational-standard
+
+# if this package requires cupy, gdal or some other component better installed using conda,
+# do so immediately below this line in the dockerfile, e.g:
+RUN conda install -c conda-forge --name test_env gdal=3.3.1
+
+# If this package requires the Google Cloud CLI, install it via uncommenting the below:
+# RUN curl -O https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-413.0.0-linux-x86_64.tar.gz \
+#     && tar -xf google-cloud-cli-413.0.0-linux-x86_64.tar.gz \
+#     && ./google-cloud-sdk/install.sh --quiet \
+#     && source ./google-cloud-sdk/path.bash.inc
+# You may also wish to remove now redundant lines within the "tidy_images_and_branches" job in .github/workflows/generic_deploy.yml
+
+# install the requirements for this package in particular
+COPY requirements.txt requirements.txt
+RUN conda run --name test_env pip install -r requirements.txt \
+    --extra-index-url https://europe-west1-python.pkg.dev/earthwave-sys-0/ewpr/simple

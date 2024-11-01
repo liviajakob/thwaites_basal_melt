@@ -1,0 +1,133 @@
+# A reuseable generic pipeline for deploying an Earthwave Python package.
+# Note that this pipeline assumes that setup.py already knows what version to deploy as.
+# In the template, this is achieved through the GITHUB_REF_NAME environment variable.
+name: generic_deploy
+
+on:
+  workflow_call:
+    inputs:
+      package_name:
+        description: 'The name of the package to build.'
+        required: true
+        type: string
+
+jobs:
+  generate_container_name:
+    # work out which container to use for the remainder of the pipeline, based on the package and branch name
+    runs-on: self-hosted
+    container:
+      image: ubuntu:22.04
+    defaults:
+      run:
+        shell: bash -leo pipefail {0}
+    steps:
+      - uses: actions/checkout@v3
+      - id: specify
+        run: |
+          echo "image_name=europe-west1-docker.pkg.dev/earthwave-sys-0/ewdr/${{ inputs.package_name }}_main" >> $GITHUB_OUTPUT
+    outputs:
+      image_name: ${{ steps.specify.outputs.image_name }}
+
+  tidy_images_and_branches:
+    needs: generate_container_name
+    # delete docker images that are no longer needed (notionally because we just merged the associated branch into main)
+    runs-on: self-hosted
+    container:
+      image: ${{ needs.generate_container_name.outputs.image_name }}
+      credentials:
+        username: _json_key
+        password: ${{ secrets.GCP_CREDENTIALS }}
+    defaults:
+      run:
+        shell: bash -leo pipefail {0}
+    steps:
+      - uses: actions/checkout@v3
+        # we need to clone using the EARTHWAVE_ADMIN_PAT in order to gain permission to clone the ew_ci_cd submodule.
+        with:
+          token: ${{ secrets.EARTHWAVE_ADMIN_PAT }}
+
+      - name: Install Google Cloud CLI
+        # while there is a github action to do this, it doesn't work in the base CI containers.
+        # We keep these tools out of the base image because they're large compared to the rest of the image
+        # and not every earthwave project needs them, plus they install quickly and easily.
+        run: |
+          curl -O https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-413.0.0-linux-x86_64.tar.gz
+          tar -xf google-cloud-cli-413.0.0-linux-x86_64.tar.gz
+          ./google-cloud-sdk/install.sh --quiet
+
+      - name: Delete old docker images from artifact repo
+        # note keyfile is already present in container image (was copied over during build)
+        # source ./google-cloud-sdk/path.bash.inc is a "conda activate" equivalent for the GCloud CLI,
+        # which we installed above.
+        run: |
+          conda activate test_env
+          source ./google-cloud-sdk/path.bash.inc
+          python /home/earthwave/ew_continuous_integration/delete_containers_not_matching_remote_branches.py --package_name polar_iceshelves
+
+      - name: Delete old branches from the git repo
+        run: |
+          conda activate test_env
+          source ./google-cloud-sdk/path.bash.inc
+          python /home/earthwave/ew_continuous_integration/delete_old_branches.py --branch_age_limit_days 30
+
+  deploy:
+    needs: generate_container_name
+    runs-on: self-hosted
+    container:
+      image: ${{ needs.generate_container_name.outputs.image_name }}
+      credentials:
+        username: _json_key
+        password: ${{ secrets.GCP_CREDENTIALS }}
+    defaults:
+      run:
+        shell: bash -leo pipefail {0}
+    steps:
+      - uses: actions/checkout@v3
+        # Note that git actions performed with secrets.GITHUB_TOKEN will not trigger another workflow. 
+        # To trigger another workflow, you must use a PAT instead (and that PAT must have workflow permissions).
+        # Here, we use the ADMIN_PAT because we're going to impersonate earthwave-admin to tag the release.
+        with:
+          token: ${{ secrets.EARTHWAVE_ADMIN_PAT }}       
+
+      - name: Prepare repository for interaction
+        # we have to manually set the username and email before we can commit and push
+        # for some reason, actions/checkout pulls in tags attached to dangling commits, so we need to remove those too
+        # lastly, we set pull.rebase false to suppress a hint message
+        run: |
+          git tag -d $(git tag -l)
+          git fetch --tags
+          git config --global user.name "earthwave-admin"
+          git config --global user.email "github_admin@earthwave.co.uk"
+          git config --global pull.rebase false
+
+      - name: Build
+        # define_new_version_number.py generates full_version.txt for use in the next step
+        run: |
+          conda activate test_env
+          python /home/earthwave/ew_continuous_integration/define_new_version_number.py
+          python setup.py sdist bdist_wheel
+
+      - name: Tag current rev as this version
+        id: push_tags
+        # we add "|| exit 1" to ensure that if the tag already exists, the build fails.
+        # The tag may already exist if there were two merges to main in rapid succession.
+        # This isn't a problem, as we'll simply deploy next time.
+        # Note that we intentionally do not create GitHub releases becuase we instead store our releases
+        # in the Google Python Artifact Repo.        
+        run: |
+          git tag "$(<full_version.txt)" || exit 1
+          git push --tags
+          echo "full_version=$(<full_version.txt)" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v1
+        with:
+          body: "This is an automatically generated build release.\nPlease obtain the packaged version of this release from the python artifact repo at:\n https://console.cloud.google.com/artifacts/python/earthwave-sys-0/europe-west1/ewpr.\nInstructions on how to install packages from this repo are included in the README.md. Please view CHANGELOG.md for additional details."
+          tag_name: ${{ steps.push_tags.outputs.full_version }}
+          token: ${{ secrets.EARTHWAVE_ADMIN_PAT }}
+
+      - name: Deploy to Google Python Artifact Registry
+        # note twine is able to upload to gcloud because a keyfile and the keyring backend was installed during image build.
+        run: |
+          conda activate test_env
+          twine upload --verbose --repository-url https://europe-west1-python.pkg.dev/earthwave-sys-0/ewpr/ dist/*

@@ -1,10 +1,10 @@
 %% Read data
 
-moor = csvread('/Users/ngourme2/Proposals/ESA/ITTs/PolarT3-IceShelves/AmundsenSubglacialInducedMelt/Thwaites_paper_data/Rev#1-data//e_Moorings_0_8C_depth.csv',1,0) ;
+moor = csvread('./e_Moorings_0_8C_depth.csv',1,0) ;
 moor(1108,:) = [] ; moor(1930:1945,:) = [] ; % Remove duplicate and no values
-sglV = csvread('/Users/ngourme2/Proposals/ESA/ITTs/PolarT3-IceShelves/AmundsenSubglacialInducedMelt/Thwaites_paper_data/Rev#1-data//2d_Subglacial_lakes_volume_change.csv',1,0) ;
-melt = csvread('/Users/ngourme2/Proposals/ESA/ITTs/PolarT3-IceShelves/AmundsenSubglacialInducedMelt/Thwaites_paper_data/Rev#1-data//e_Thwaites_basal_melt_anomalies.csv',1,0) ;
-meltPIG = csvread('/Users/ngourme2/Proposals/ESA/ITTs/PolarT3-IceShelves/AmundsenSubglacialInducedMelt/Thwaites_paper_data/Rev#1-data//e_Pine_Island_basal_melt_anomalies.csv',1,0) ;
+sglV = csvread('./2d_Subglacial_lakes_volume_change.csv',1,0) ;
+melt = csvread('./e_Thwaites_basal_melt_anomalies.csv',1,0) ;
+meltPIG = csvread('./e_Pine_Island_basal_melt_anomalies.csv',1,0) ;
 
 %% Resample to melt time sampling
 

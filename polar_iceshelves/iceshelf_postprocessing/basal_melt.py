@@ -18,7 +18,7 @@ def calculate_basal_melt_timeseries_with_errors(
         return None
     melt_rate_error = zonal_stats(polygon, constants.BASAL_MELT_ERROR_TIF, copy_properties=True,
                                   add_stats={'errors': timeseries_helpers.zonal_stats_errors_calc})[0]['errors']
-    print('Melt rate is: ', melt_rate, "+-", melt_rate_error)
+    print('Melt rate is: ', melt_rate)
 
     # 2 dhdt timeseries
     print("Calculating dhdt timeseries...")
@@ -130,7 +130,6 @@ def calculate_basal_melt_timeseries_with_errors(
     df_timeseries = df_timeseries.reset_index(drop=True)
 
     df_timeseries['bm_linear'] = (df_timeseries['dates_decimal'] - df_timeseries['dates_decimal'].iloc[0]) * melt_rate
-    df_timeseries['bm_cum'] = df_timeseries['bm_linear'] + df_timeseries['bm_anomalies']
 
     # Error propagation
     smb_err = df_timeseries['smb_errors']
@@ -153,10 +152,12 @@ def calculate_basal_melt_timeseries_with_errors(
             + np.concatenate(
                 ([0], np.array(df_timeseries['bm_anomalies_errors'])[:-1]))**2)**2)  # mean melt rate, t-1 and t errors
 
+    df_timeseries.drop(columns=['dates', 'averages', 'changes'], inplace=True)
     return df_timeseries
 
 
-def apply_filters(df, column, filter_type):
+def apply_filters(df_in, column, filter_type):
+    df = df_in.copy()
     arr = np.array(df[column])
     nan_mask = np.isnan(arr)
     arr[nan_mask] = np.interp(np.flatnonzero(nan_mask), np.flatnonzero(~nan_mask), arr[~nan_mask])  # fill no data
